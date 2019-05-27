@@ -34,7 +34,14 @@
 
 /* Private define ------------------------------------------------------------*/
 /* USER CODE BEGIN PD */
+#define ADDR_FLASH_PAGE_62    ((uint32_t)0x0801F000) /* Base @ of Page 62, 2 Kbytes */
+#define ADDR_FLASH_PAGE_63    ((uint32_t)0x0801F800) /* Base @ of Page 63, 2 Kbytes */
 
+#define FLASH_USER_START_ADDR       ADDR_FLASH_PAGE_62   /* Start @ of user Flash area */
+#define FLASH_USER_END_ADDR         ADDR_FLASH_PAGE_63   /* End @ of user Flash area */
+#define FLASH_PAGE_TO_BE_PROTECTED OB_WRP_PAGES62TO63
+
+#define DATA_32                     ((uint32_t)0x12345678)
 /* USER CODE END PD */
 
 /* Private macro -------------------------------------------------------------*/
@@ -89,8 +96,13 @@ int main(void)
   /* Initialize all configured peripherals */
   MX_GPIO_Init();
 
+  uint32_t  readtype = 0;
+
+  readtype = *(__IO uint32_t*)FLASH_USER_START_ADDR;
+
+
   /* USER CODE BEGIN 2 */
-	if(HAL_GPIO_ReadPin(GPIOB,GPIO_PIN_4) == GPIO_PIN_SET)
+	if(HAL_GPIO_ReadPin(GPIOB,GPIO_PIN_4) == GPIO_PIN_SET && readtype != DATA_32)
 	{
 		/* Test if user code is programmed starting from USBD_DFU_APP_DEFAULT_ADD address */
 		if (((*(__IO uint32_t*)USBD_DFU_APP_DEFAULT_ADD) & 0x2FFE0000 ) == 0x20000000)
@@ -104,6 +116,54 @@ int main(void)
 			JumpToApplication();
 		}
 	} else {
+		uint32_t PageError = 0;
+		FLASH_EraseInitTypeDef EraseInitStruct;
+		FLASH_OBProgramInitTypeDef OptionsBytesStruct;
+
+		/* Unlock the Flash to enable the flash control register access *************/
+		HAL_FLASH_Unlock();
+
+		/* Unlock the Options Bytes *************************************************/
+		HAL_FLASH_OB_Unlock();
+
+		/* Get pages write protection status ****************************************/
+		HAL_FLASHEx_OBGetConfig(&OptionsBytesStruct);
+
+		/* Check if desired pages are already write protected ***********************/
+		if((OptionsBytesStruct.WRPPage & FLASH_PAGE_TO_BE_PROTECTED) != FLASH_PAGE_TO_BE_PROTECTED)
+		{
+			/* Restore write protected pages */
+			OptionsBytesStruct.OptionType   = OPTIONBYTE_WRP;
+			OptionsBytesStruct.WRPState     = OB_WRPSTATE_DISABLE;
+			OptionsBytesStruct.WRPPage = FLASH_PAGE_TO_BE_PROTECTED;
+			if(HAL_FLASHEx_OBProgram(&OptionsBytesStruct) != HAL_OK)
+			{
+			}
+
+			/* Generate System Reset to load the new option byte values ***************/
+			HAL_FLASH_OB_Launch();
+		}
+
+		/* Lock the Options Bytes *************************************************/
+		HAL_FLASH_OB_Lock();
+
+		/* The selected pages are not write protected *******************************/
+		if ((OptionsBytesStruct.WRPPage & FLASH_PAGE_TO_BE_PROTECTED) != 0x00)
+		{
+			/* Fill EraseInit structure************************************************/
+			EraseInitStruct.TypeErase   = FLASH_TYPEERASE_PAGES;
+			EraseInitStruct.PageAddress = FLASH_USER_START_ADDR;
+			EraseInitStruct.NbPages     = (FLASH_USER_END_ADDR - FLASH_USER_START_ADDR)/FLASH_PAGE_SIZE;
+
+			if (HAL_FLASHEx_Erase(&EraseInitStruct, &PageError) != HAL_OK)
+			{
+			}
+		}
+//		readtype = *(__IO uint32_t*)FLASH_USER_START_ADDR;
+//
+//		if (readtype > 0) {
+//			HAL_Delay(1);
+//		}
 		MX_USB_DEVICE_Init();
 	}
 	//MX_USART1_UART_Init();
