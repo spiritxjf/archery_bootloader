@@ -79,7 +79,7 @@
 /*---------- -----------*/
 #define USBD_DFU_XFER_SIZE     1024
 /*---------- -----------*/
-#define USBD_DFU_APP_DEFAULT_ADD     0x0800C000
+#define USBD_DFU_APP_DEFAULT_ADD     0x08008000
 
 /****************************************/
 /* #define for FS and HS identification */
